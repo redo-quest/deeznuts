@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deez Nutz</title>
+</head>
+<body>
+    <style>
+        html, body{
+    overflow: hidden;
+}
+#game{
+    visibility: hidden;
+}
+#steadyCvs{
+    background-color: darkolivegreen;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+#canvas{
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+#mainMenu{
+    position: fixed;
+    text-align: center;
+    top: 35%;
+    left: 35%;
+}
+#DeezNutz{
+    font-size: 100px;
+    color: chocolate;
+}
+#nuts{
+    width: 100px;
+    height: 100px;
+}
+#playBtn{
+    width: 200px;
+    height: 100px;
+    font-size: xx-large;
+}
+#nameText{
+    font-size: xx-large;
+}
+#name{
+    height: 90px;
+    font-size: xx-large;
+}
+    </style>
+    <div id="game">
+    <canvas id="steadyCvs" width="2000" height="2000"></canvas>
+    <canvas id="canvas" width="1920" height="1080"></canvas>
+    <canvas id="drawCanvas" width="1920" height="1080"></canvas>
+    </div>
+    <div id="mainMenu">
+        <div id="DeezNutz">DeezNutz
+            <img id="nuts" src="https://i.ibb.co/rdXyjH2/nuts.jpg">
+        </div>
+        <button id="playBtn">play</button>
+        <h2 id="nameText">name:</h2>
+        <input id="name" placeholder="DeezNutz"></input>
+    </div>
+    <script>
+        let ws = new WebSocket("wss://shore-cherry-vinyl.glitch.me/");
+ws.onclose = function () {
+  console.log("socket closed");
+};
+ws.onmessage = (message) => {
+  const response = JSON.parse(message.data);
+  switch (response.method) {
+    case "connect":
+      player.id = response.clientId;
+      break;
+    case "spawn":
+      console.log("recievd spawn");
+      gameContainer.style.visibility = "visible";
+      mainMenu.style.visibility = "hidden";
+      (player.x = response.x), (player.y = response.y);
+      break;
+    case "move":
+      if (response.clientId == player.id) {
+        nuts.forEach((nut) => {
+          nut.xOffset += response.x - player.x;
+          nut.yOffset += response.y - player.y;
+        })
+        players.forEach((enemy) => {
+          enemy.xOffset += response.x - player.x;
+          enemy.yOffset += response.y - player.y;
+        })
+        player.x = response.x;
+        player.y = response.y;
+      } else {
+        const samePlayer = players.filter((enemy) => {
+          return enemy.clientId;
+        });
+        if (samePlayer.length == 0) {
+          console.log("SAME");
+          players.push({
+            x: response.x,
+            y: response.y,
+            xOffset: 0,
+            yOffset: 0,
+            clientId: response.clientId,
+            name: response.name,
+          })
+        } else {
+          samePlayer[0].x = response.x;
+          samePlayer[0].y = response.y;
+          samePlayer[0].clientId = response.clientId;
+          samePlayer[0].name = response.name;
+        }
+      }
+      break;
+    case "createNut":
+      const nutted = nuts.filter(nut => {
+        return nut.id == response.id;
+      })[0];
+      if(nutted) {
+        nutted.x = response.x;
+        nutted.y = response.y;
+      } else {
+      nuts.push({y: response.y, x: response.x, id: response.id, xOffset: 0, yOffset: 0});
+      }
+      break;
+    case "deleteNut":
+      console.log(nuts.length);
+      nuts.splice(nuts.indexOf(nuts.filter(nut => {return nut.id == response.id})[0]), 1);
+      console.log(nuts.length);
+      break;
+  }
+};
+
+const mainMenu = document.getElementById("mainMenu"),
+  gameContainer = document.getElementById("game"),
+  canvas = document.getElementById("canvas"),
+  ctx = canvas.getContext("2d"),
+  steadyCvs = document.querySelector("#steadyCvs"),
+  steadyCtx = steadyCvs.getContext("2d"),
+  drawCvs = document.getElementById("drawCanvas"),
+  drawCtx = drawCvs.getContext("2d"),
+  playBtn = document.getElementById("playBtn"),
+  nameBox = document.querySelector("#name"),
+  playerName = document.getElementById("playerName");
+let player = {
+  x: 0,
+  y: 0
+},
+  moveDir,
+  username = "DeezNutz",
+  nuts = [],
+  players = [],
+  mouseX,
+  mouseY;
+
+function drawPlayer(x, y, isMainPlayer, name) {
+  if (isMainPlayer) {
+  steadyCvs.style.top = 1080 - y + "px";
+  steadyCvs.style.left = 1920 - x + "px";
+  }
+  ctx.fillStyle = "#bf8f54";
+  ctx.strokeStyle = "rgba(0,0,0,0.5)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(isMainPlayer ? 1920 / 2 : x, isMainPlayer ? 1080 / 2 : y, 30, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.stroke();
+  ctx.closePath();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#3d3f42";
+  ctx.lineJoin = "round";
+  ctx.font = "20px Hammersmith One";
+  ctx.lineWidth = 6;
+  ctx.strokeText(name, isMainPlayer ? 1920 / 2 : x, isMainPlayer ? 1010 / 2 : y - 50);
+  ctx.fillText(name, isMainPlayer ? 1920 / 2 : x, isMainPlayer ? 1010 / 2 : y - 50);
+}
+playBtn.addEventListener("click", (click) => {
+  username = nameBox.value;
+  click.button == 0 &&
+    ws.send(
+      JSON.stringify({
+        "method": "play",
+        name: username,
+        "clientId": player.id,
+      })
+    );
+});
+let keysPressed = [],
+  keyPressed;
+function keyToText(key, excludeRepeat) {
+  let tempKey = key.key;
+  if (tempKey)
+    return `${key.ctrlKey && tempKey != "Control" ? "CTRL + " : ""}${
+      key.altKey && tempKey != "Alt" ? "ALT + " : ""
+    }${key.shiftKey && tempKey != "Shift" ? "SHIFT + " : ""}${
+      key.location == key.DOM_KEY_LOCATION_STANDARD
+        ? "Keyboard"
+        : key.location == key.DOM_KEY_LOCATION_NUMPAD
+        ? "Numpad"
+        : key.location == key.DOM_KEY_LOCATION_LEFT
+        ? "Left"
+        : key.location == key.DOM_KEY_LOCATION_RIGHT
+        ? "Right"
+        : "Unknown"
+    } ${
+      tempKey != " "
+        ? tempKey.length == 1
+          ? tempKey.toUpperCase()
+          : tempKey
+        : "Space"
+    }${excludeRepeat ? "" : key.repeat ? " held" : " pressed"}`;
+}
+document.addEventListener("keydown", (key) => {
+  if (!key.repeat) {
+    keyPressed = keyToText(key, true);
+    if (!keysPressed.includes(keyPressed)) {
+      keysPressed.push(keyPressed);
+    }
+    moveDir = Math.atan2(
+      keysPressed.includes("Keyboard S") - keysPressed.includes("Keyboard W"),
+      keysPressed.includes("Keyboard D") - keysPressed.includes("Keyboard A")
+    );
+    if (["Keyboard W", "Keyboard A", "Keyboard S", "Keyboard D"].includes(
+      keyPressed)) {
+        if (keysPressed.includes("Keyboard S") - keysPressed.includes("Keyboard W") == 0 && keysPressed.includes("Keyboard D") - keysPressed.includes("Keyboard A") == 0) {
+          ws.send(
+            JSON.stringify({
+              "method": "move",
+              "dir": null,
+              "clientId": player.id,
+              "name": username,
+            })
+          )
+        } else {
+      ws.send(
+        JSON.stringify({
+          "method": "move",
+          "dir": moveDir,
+          "clientId": player.id,
+          "name": username,
+        })
+      )
+        }
+      }
+  }
+});
+
+document.addEventListener("keyup", (key) => {
+  keysPressed.forEach((element, index, array) => {
+    if (keyToText(key, true) == element) {
+      array.splice(index, 1);
+    }
+  });
+  moveDir = Math.atan2(
+    keysPressed.includes("Keyboard S") - keysPressed.includes("Keyboard W"),
+    keysPressed.includes("Keyboard D") - keysPressed.includes("Keyboard A")
+  );
+  if (["Keyboard W", "Keyboard A", "Keyboard S", "Keyboard D"].includes(
+    keyPressed
+  )) {
+    if (keysPressed.includes("Keyboard S") - keysPressed.includes("Keyboard W") == 0 && keysPressed.includes("Keyboard D") - keysPressed.includes("Keyboard A") == 0) {
+      ws.send(
+        JSON.stringify({
+          "method": "move",
+          "dir": null,
+          "clientId": player.id,
+        })
+      )
+    } else {
+    ws.send(
+      JSON.stringify({
+        "method": "move",
+        "dir": moveDir,
+        "clientId": player.id,
+        "name": username,
+      })
+    );
+    }
+  }
+});
+
+
+function drawNut(x, y, type) {
+  if (type == 1) {
+    ctx.globalAlpha = 5;
+      ctx.fillStyle = "rgb(153, 102, 0)";
+      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(
+        x,
+        y,
+        10,
+        0,
+        2 * Math.PI
+      );
+      ctx.fill();
+      ctx.stroke();
+      ctx.closePath();
+  }
+}
+document.addEventListener("click", (click) => {
+  click.button == 0 &&
+    gameContainer.style.visibility == "visible" &&
+    ws.send(
+      JSON.stringify({
+        "method": "shoot",
+        "dir": Math.atan2(click.clientY - 1080 / 2, click.clientX - 1920 / 2),
+        "trueORfalse": true,
+      })
+    );
+});
+function clearCvs() {
+  ctx.clearRect(0, 0, 1920, 1080);
+}
+setInterval(() => {
+  clearCvs();
+  drawPlayer(player.x, player.y, true, username);
+  nuts.forEach(nut => {
+    drawNut(nut.x - nut.xOffset, nut.y - nut.yOffset, 1);
+  })
+  let init = false;
+  players.forEach((enemy) => {
+    if (Math.hypot(enemy.x - player.x, enemy.y - player.y) < 5000) {
+      if (!init) {
+        init = true;
+      }
+      console.log("obama");
+      drawPlayer(enemy.x - enemy.xOffset, enemy.y - enemy.yOffset, false, enemy.name);
+    } else {
+      init = false;
+    }
+  })
+}, 1000 / 60)
+    </script>
+</body>
+</html>
